@@ -1,0 +1,60 @@
+iname: fairness-tsc
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python
+  - python=3.10
+  
+  # PyTorch with CUDA
+  - pytorch::pytorch>=2.0.0
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::pytorch-cuda=12.1
+  
+  # Scientific Stack
+  - numpy>=1.24.0
+  - scipy>=1.10.0
+  - pandas>=2.0.0
+  - scikit-learn>=1.3.0
+  
+  # Visualization
+  - matplotlib>=3.7.0
+  - seaborn>=0.12.0
+  - plotly>=5.14.0
+  
+  # Jupyter
+  - jupyter
+  - jupyterlab
+  - ipykernel
+  - ipywidgets
+  
+  # Development
+  - pytest
+  - black
+  - flake8
+  
+  # Configuration
+  - pyyaml
+  
+  # Utilities
+  - tqdm
+  - click
+  
+  # Tensorboard
+  - tensorboard>=2.13.0
+  
+  # Pip packages
+  - pip
+  - pip:
+      - gymnasium>=0.28.0
+      - stable-baselines3>=2.0.0
+      - sumolib
+      - traci
+      - wandb
+      - opencv-python-headless
+      - omegaconf>=2.3.0
+      - python-dotenv>=1.0.0

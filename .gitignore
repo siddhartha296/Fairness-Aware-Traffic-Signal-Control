@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data files
+data/raw/**/*.csv
+data/raw/**/*.xml
+data/processed/**/*.pkl
+*.h5
+*.hdf5
+
+# Model checkpoints
+models/**/*.pth
+models/**/*.pt
+results/*/checkpoints/*.pth
+
+# Logs
+results/*/logs/**/*.log
+*.log
+logs/
+
+# SUMO temporary files
+*.sumocfg
+*.trip.xml
+*.tripinfo.xml
+*.fcd.xml
+*.emissions.xml
+*.queue.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Experiment results (keep structure, ignore data)
+results/*/visualizations/*.png
+results/*/visualizations/*.pdf
+results/*/visualizations/*.mp4
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Large files
+*.zip
+*.tar.gz
+*.tar
+
+# Environment
+.env
+.env.local

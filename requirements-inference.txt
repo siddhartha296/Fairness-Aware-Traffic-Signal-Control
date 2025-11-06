@@ -1,0 +1,21 @@
+# Deep Learning (CPU-only)
+--index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Core dependencies (same as above but without CUDA)
+gymnasium>=0.28.0
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+pyyaml>=6.0
+tqdm>=4.65.0
+
+# SUMO (with GUI support on laptop)
+sumolib>=1.19.0
+traci>=1.19.0
+
+# Visualization
+opencv-python>=4.7.0  # Full version with GUI support
+plotly>=5.14.0
