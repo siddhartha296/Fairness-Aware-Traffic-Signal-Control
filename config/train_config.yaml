@@ -1,0 +1,114 @@
+# Training Configuration
+# config/train_config.yaml
+
+experiment_name: "fairness_aware_tsc"
+seed: 42
+
+# Environment Configuration
+environment:
+  name: "SumoTrafficEnv"
+  episode_length: 3600  # 1 hour simulation
+  step_size: 5          # Control decision every 5 seconds
+  yellow_time: 3        # Yellow phase duration
+  min_green: 10         # Minimum green phase duration
+  max_green: 60         # Maximum green phase duration
+  sumo_warnings: false
+
+# Reward Function Configuration
+reward:
+  type: "fairness_aware"
+  
+  # Component weights (must sum to ~1.0)
+  weights:
+    efficiency: 0.4    # Weight for efficiency component
+    fairness: 0.4      # Weight for fairness component
+    penalty: 0.2       # Weight for starvation penalty
+  
+  # Reward parameters
+  parameters:
+    # Efficiency parameters
+    alpha: 1.0         # Waiting time weight in efficiency
+    beta: 0.5          # Queue length weight in efficiency
+    
+    # Fairness parameters
+    gamma: 2.0         # Standard deviation weight
+    delta: 1.5         # Maximum waiting time weight
+    
+    # Starvation penalty parameters
+    lambda: 0.1        # Exponential penalty rate
+    threshold: 120     # Starvation threshold (seconds)
+    
+    # Normalization
+    normalize: true
+    mean_wait: 30.0
+    std_wait: 20.0
+
+# Model Configuration
+model:
+  algorithm: "DQN"     # DQN or PPO
+  
+  architecture:
+    hidden_layers: [256, 256, 128]  # Neural network architecture
+    activation: "relu"               # Activation function
+  
+  # DQN-specific parameters
+  learning_rate: 0.0001
+  gamma: 0.99                # Discount factor
+  epsilon_start: 1.0         # Initial exploration rate
+  epsilon_end: 0.01          # Final exploration rate
+  epsilon_decay: 0.995       # Epsilon decay per episode
+  
+  # Experience replay
+  replay_buffer_size: 100000
+  batch_size: 128
+  target_update_freq: 1000   # Update target network every N steps
+
+# Training Configuration
+training:
+  episodes: 10000              # Total training episodes
+  batch_size: 128              # Batch size for training
+  
+  # Evaluation
+  eval_freq: 100               # Evaluate every N episodes
+  num_eval_episodes: 10        # Number of episodes for evaluation
+  
+  # Checkpointing
+  checkpoint_freq: 500         # Save checkpoint every N episodes
+  save_best: true              # Save best model separately
+  
+  # Early stopping
+  early_stopping:
+    enabled: false
+    patience: 1000             # Stop if no improvement for N episodes
+    min_delta: 0.01            # Minimum improvement threshold
+
+# Hardware Configuration
+hardware:
+  gpu_ids: [0, 1]              # GPU IDs to use
+  num_workers: 8               # Number of data loading workers
+  prefetch_factor: 2           # Data prefetch factor
+  pin_memory: true             # Pin memory for faster GPU transfer
+
+# Logging Configuration
+logging:
+  tensorboard: true            # Enable TensorBoard logging
+  wandb: false                 # Enable Weights & Biases logging
+  log_interval: 10             # Log every N episodes
+  save_videos: false           # Save episode videos
+  video_freq: 100              # Save video every N episodes
+
+# Hyperparameter Search (optional)
+hyperparameter_search:
+  enabled: false
+  method: "grid"               # grid, random, bayesian
+  trials: 50
+  
+  # Parameters to search
+  search_space:
+    learning_rate: [1e-5, 5e-5, 1e-4, 5e-4]
+    gamma: [0.95, 0.99, 0.995]
+    reward_weights:
+      - [0.6, 0.3, 0.1]        # Efficiency-focused
+      - [0.4, 0.4, 0.2]        # Balanced
+      - [0.3, 0.5, 0.2]        # Fairness-focused
+      - [0.2, 0.6, 0.2]        # Heavy fairness
