@@ -10,7 +10,7 @@ dependencies:
   - python=3.10
   
   # SUMO Simulator
-  - sumo
+  # - sumo  <--- THIS LINE MUST BE REMOVED
   
   # PyTorch with CUDA
   - pytorch::pytorch>=2.0.0
@@ -55,9 +55,5 @@ dependencies:
   - pip:
       - gymnasium>=0.28.0
       - stable-baselines3>=2.0.0
-      - sumolib
-      - traci
+      # sumolib and traci are provided by the conda 'sumo' package
       - wandb
-      - opencv-python-headless
-      - omegaconf>=2.3.0
-      - python-dotenv>=1.0.0
