@@ -60,8 +60,14 @@ def parse_args():
         '--network',
         type=str,
         default='single_intersection',
-        
         help='Traffic network to use'
+    )
+    parser.add_argument(
+        '--demand',
+        type=str,
+        default='medium',
+        choices=['low', 'medium', 'high', 'rush_hour'],
+        help='Traffic demand level to use'
     )
     
     # Training
@@ -211,6 +217,38 @@ def create_environment(args, config: Dict) -> SumoTrafficEnv:
             f"Run: python scripts/generate_traffic.py --network {args.network}"
         )
     
+    # Determine demand level to use (default to 'medium')
+    demand_level = getattr(args, 'demand', 'medium')
+    demand_path = network_path / demand_level
+    
+    # Check if demand-specific directory exists
+    if not demand_path.exists():
+        # Try to find any available demand directory
+        available_demands = [d.name for d in network_path.iterdir() if d.is_dir()]
+        if available_demands:
+            demand_level = available_demands[0]
+            demand_path = network_path / demand_level
+            print(f"Using available demand level: {demand_level}")
+        else:
+            raise FileNotFoundError(
+                f"No demand scenarios found in {network_path}\n"
+                f"Run: python scripts/generate_traffic.py --network {args.network}"
+            )
+    
+    net_file = demand_path / 'network.net.xml'
+    route_file = demand_path / 'routes.rou.xml'
+    
+    if not net_file.exists():
+        raise FileNotFoundError(f"Network file not found: {net_file}")
+    if not route_file.exists():
+        raise FileNotFoundError(f"Route file not found: {route_file}")
+    
+    print(f"\nUsing traffic scenario:")
+    print(f"  Network: {args.network}")
+    print(f"  Demand: {demand_level}")
+    print(f"  Net file: {net_file}")
+    print(f"  Route file: {route_file}")
+    
     # Create reward function
     reward_config = RewardConfig(**config['reward']['parameters'])
     reward_config.w_efficiency = config['reward']['weights']['efficiency']
@@ -221,8 +259,8 @@ def create_environment(args, config: Dict) -> SumoTrafficEnv:
     
     # Create environment
     env = SumoTrafficEnv(
-        net_file=str(network_path / 'network.net.xml'),
-        route_file=str(network_path / 'routes.rou.xml'),
+        net_file=str(net_file),
+        route_file=str(route_file),
         reward_fn=reward_fn,
         use_gui=not args.no_gui and not args.debug,
         episode_length=env_config['episode_length'],
@@ -232,11 +270,7 @@ def create_environment(args, config: Dict) -> SumoTrafficEnv:
         max_green=env_config['max_green']
     )
     
-    print(f"\nEnvironment created:")
-    print(f"  Network: {args.network}")
-    print(f"  State dim: {env.observation_space.shape}")
-    print(f"  Action dim: {env.action_space.n}")
-    print(f"  Episode length: {env_config['episode_length']}s")
+    print(f"\nEnvironment created (will be initialized on first reset)")
     
     return env
 
@@ -245,12 +279,26 @@ def create_agent(args, config: Dict, env, device: torch.device):
     """Create RL agent"""
     model_config = config['model']
     
+    print(f"\nInitializing environment to get dimensions...")
+    
+    # Reset environment once to initialize spaces
+    state, _ = env.reset()
+    state_dim = len(state)
+    action_dim = env.action_space.n
+    
+    print(f"\nCreating agent with:")
+    print(f"  State dim: {state_dim}")
+    print(f"  Action dim: {action_dim}")
+    
+    # Close SUMO after getting dimensions (will restart in training)
+    env.close()
+    
     if args.algorithm == 'DQN':
         from src.models.dqn import DQNAgent
         
         agent = DQNAgent(
-            state_dim=env.observation_space.shape[0],
-            action_dim=env.action_space.n,
+            state_dim=state_dim,
+            action_dim=action_dim,
             hidden_layers=model_config['architecture']['hidden_layers'],
             learning_rate=model_config['learning_rate'],
             gamma=model_config['gamma'],
@@ -264,8 +312,8 @@ def create_agent(args, config: Dict, env, device: torch.device):
         from src.models.ppo import PPOAgent
         
         agent = PPOAgent(
-            state_dim=env.observation_space.shape[0],
-            action_dim=env.action_space.n,
+            state_dim=state_dim,
+            action_dim=action_dim,
             hidden_layers=model_config['architecture']['hidden_layers'],
             learning_rate=model_config['learning_rate'],
             gamma=model_config['gamma'],
@@ -394,6 +442,7 @@ def main():
     print(f"\nConfiguration:")
     print(f"  Config file: {args.config}")
     print(f"  Network: {args.network}")
+    print(f"  Demand: {args.demand}")
     print(f"  Algorithm: {args.algorithm}")
     print(f"  Episodes: {config['training']['episodes']}")
     print(f"  Batch size: {config['training']['batch_size']}")

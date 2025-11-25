@@ -1,5 +1,5 @@
 """
-SUMO Traffic Environment Wrapper
+SUMO Traffic Environment Wrapper - FIXED VERSION
 src/environment/sumo_env.py
 """
 
@@ -76,41 +76,25 @@ class SumoTrafficEnv(gym.Env):
         self.net = sumolib.net.readNet(net_file)
         
         # Get traffic light IDs
-        self.tls_objects = self.net.getTrafficLights()
-        if not self.tls_objects:
+        self.tls_list = list(self.net.getTrafficLights())
+        if not self.tls_list:
             raise ValueError("No traffic lights found in network")
-        self.tls_ids = [tls.getID() for tls in self.tls_objects]
-        self.tls_ids = [tls.getID() for tls in self.tls_objects]
         
         # For simplicity, control first traffic light
         # Can be extended to multi-agent
-        self.tls_id = self.tls_ids[0]
+        self.tls = self.tls_list[0]
+        self.tls_id = self.tls.getID()
         
-        # Get phases for this traffic light
-        tls = self.tls_objects[0]
-        self.phases = list(tls.getPrograms().values())[0].getPhases()
+        print(f"Controlling traffic light: {self.tls_id}")
         
-        # Filter out yellow/red phases (only green phases are actions)
-        self.green_phases = [
-            i for i, phase in enumerate(self.phases)
-            if 'y' not in phase.state.lower() and 'r' in phase.state.lower()
-        ]
+        # Get controlled lanes - will be determined at runtime
+        self.lanes = []
+        self.num_phases = 4  # Default, will be updated after SUMO starts
         
-        if not self.green_phases:
-            # If no clear green phases, use all phases
-            self.green_phases = list(range(len(self.phases)))
-        
-        # Get controlled lanes
-        self.lanes = list(tls.getConnections().keys())
-        
-        # State and action spaces
-        # State: [queue_lengths (per lane), waiting_times (per lane), current_phase, time_since_last_change]
-        state_size = len(self.lanes) * 2 + 2
-        self.observation_space = spaces.Box(
-            low=0, high=np.inf, shape=(state_size,), dtype=np.float32
-        )
-        
-        self.action_space = spaces.Discrete(len(self.green_phases))
+        # Action and observation spaces will be set after initialization
+        # For now, set temporary values that will be updated
+        self.action_space = None
+        self.observation_space = None
         
         # Episode state
         self.current_step = 0
@@ -118,12 +102,67 @@ class SumoTrafficEnv(gym.Env):
         self.time_since_phase_change = 0
         self.total_reward = 0.0
         
-        print(f"SUMO Environment initialized:")
-        print(f"  Traffic lights: {len(self.tls_ids)}")
-        print(f"  Controlled TLS: {self.tls_id}")
-        print(f"  Lanes: {len(self.lanes)}")
-        print(f"  Actions (green phases): {len(self.green_phases)}")
+        # Will be initialized after first SUMO connection
+        self._initialized = False
+    
+    def _initialize_after_sumo_start(self):
+        """Initialize environment details after SUMO has started"""
+        if self._initialized:
+            return
+        
+        # Get actual controlled lanes from TraCI
+        self.lanes = list(self.sumo.trafficlight.getControlledLanes(self.tls_id))
+        # Remove duplicates
+        self.lanes = list(set(self.lanes))
+        
+        # Get traffic light program
+        logic = self.sumo.trafficlight.getAllProgramLogics(self.tls_id)[0]
+        self.phases = logic.phases
+        
+        # Create list of distinct phase states for control
+        # We'll use setRedYellowGreenState instead of setPhase for more control
+        self.phase_states = []
+        for phase in self.phases:
+            state = phase.state
+            # Only include states with green lights
+            if 'G' in state or 'g' in state:
+                if state not in self.phase_states:
+                    self.phase_states.append(state)
+        
+        if not self.phase_states:
+            # Fallback: use all phase states
+            self.phase_states = [phase.state for phase in self.phases]
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_states = []
+        for state in self.phase_states:
+            if state not in seen:
+                seen.add(state)
+                unique_states.append(state)
+        self.phase_states = unique_states
+        
+        self.num_phases = len(self.phase_states)
+        
+        # Update action space
+        self.action_space = spaces.Discrete(self.num_phases)
+        
+        # Update observation space
+        state_size = len(self.lanes) * 2 + 2  # queue + wait per lane + phase + time
+        self.observation_space = spaces.Box(
+            low=0, high=np.inf, shape=(state_size,), dtype=np.float32
+        )
+        
+        print(f"Environment initialized:")
+        print(f"  Traffic light: {self.tls_id}")
+        print(f"  Controlled lanes: {len(self.lanes)}")
+        print(f"  Total phases: {len(self.phases)}")
+        print(f"  Unique phase states: {self.num_phases}")
+        print(f"  Phase states: {self.phase_states}")
+        print(f"  Actions: {self.num_phases}")
         print(f"  State size: {state_size}")
+        
+        self._initialized = True
     
     def _start_sumo(self):
         """Start SUMO simulation"""
@@ -133,7 +172,7 @@ class SumoTrafficEnv(gym.Env):
             sumo_binary,
             '-n', self.net_file,
             '-r', self.route_file,
-            '--step-length', str(self.step_size),
+            '--step-length', str(1),  # Always use 1 second steps internally
             '--waiting-time-memory', '1000',
             '--time-to-teleport', '-1',
             '--no-step-log', 'true',
@@ -147,8 +186,12 @@ class SumoTrafficEnv(gym.Env):
         traci.start(sumo_cmd, label=self.label)
         self.sumo = traci.getConnection(self.label)
         
-        # Set initial phase
-        self.sumo.trafficlight.setPhase(self.tls_id, self.current_phase)
+        # Initialize after SUMO starts
+        self._initialize_after_sumo_start()
+        
+        # Set initial phase state
+        if self.phase_states:
+            self.sumo.trafficlight.setRedYellowGreenState(self.tls_id, self.phase_states[0])
     
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[np.ndarray, Dict]:
         """Reset environment to initial state"""
@@ -173,6 +216,10 @@ class SumoTrafficEnv(gym.Env):
         # Reset reward function
         self.reward_fn.reset()
         
+        # Run simulation for a few steps to populate vehicles
+        for _ in range(10):
+            self.sumo.simulationStep()
+        
         # Get initial state
         state = self._get_state()
         info = {'step': self.current_step}
@@ -184,7 +231,7 @@ class SumoTrafficEnv(gym.Env):
         Execute one time step.
         
         Args:
-            action: Index of green phase to activate
+            action: Index of phase state to activate
             
         Returns:
             state: Next state
@@ -193,22 +240,29 @@ class SumoTrafficEnv(gym.Env):
             truncated: Whether episode was truncated
             info: Additional information
         """
-        # Convert action to phase index
-        target_phase = self.green_phases[action]
+        # Validate action is in range
+        if action < 0 or action >= len(self.phase_states):
+            action = 0  # Default to first action if out of range
+        
+        # Get target phase state
+        target_state = self.phase_states[action]
+        current_state = self.sumo.trafficlight.getRedYellowGreenState(self.tls_id)
         
         # Check if phase change is needed
         phase_changed = False
-        if target_phase != self.current_phase:
+        if target_state != current_state:
             # Only change if minimum green time has passed
             if self.time_since_phase_change >= self.min_green:
                 # Insert yellow phase transition
-                self._set_yellow_phase(self.current_phase)
+                yellow_state = current_state.replace('G', 'y').replace('g', 'y')
+                self.sumo.trafficlight.setRedYellowGreenState(self.tls_id, yellow_state)
+                
                 for _ in range(self.yellow_time):
                     self.sumo.simulationStep()
                 
-                # Set new phase
-                self.sumo.trafficlight.setPhase(self.tls_id, target_phase)
-                self.current_phase = target_phase
+                # Set new phase state
+                self.sumo.trafficlight.setRedYellowGreenState(self.tls_id, target_state)
+                self.current_phase = action
                 self.time_since_phase_change = 0
                 phase_changed = True
         
@@ -252,34 +306,42 @@ class SumoTrafficEnv(gym.Env):
         State includes:
         - Queue length per lane
         - Average waiting time per lane
-        - Current phase (one-hot)
-        - Time since last phase change
+        - Current phase (normalized)
+        - Time since last phase change (normalized)
         """
         queue_lengths = []
         waiting_times = []
         
         for lane_id in self.lanes:
             # Queue length (number of halting vehicles)
-            queue_length = self.sumo.lane.getLastStepHaltingNumber(lane_id)
-            queue_lengths.append(queue_length)
-            
-            # Average waiting time
-            vehicle_ids = self.sumo.lane.getLastStepVehicleIDs(lane_id)
-            if vehicle_ids:
-                lane_waiting_time = np.mean([
-                    self.sumo.vehicle.getWaitingTime(vid) 
-                    for vid in vehicle_ids
-                ])
-            else:
-                lane_waiting_time = 0.0
-            waiting_times.append(lane_waiting_time)
+            try:
+                queue_length = self.sumo.lane.getLastStepHaltingNumber(lane_id)
+                queue_lengths.append(queue_length)
+                
+                # Average waiting time
+                vehicle_ids = self.sumo.lane.getLastStepVehicleIDs(lane_id)
+                if vehicle_ids:
+                    lane_waiting_time = np.mean([
+                        self.sumo.vehicle.getWaitingTime(vid) 
+                        for vid in vehicle_ids
+                    ])
+                else:
+                    lane_waiting_time = 0.0
+                waiting_times.append(lane_waiting_time)
+            except:
+                # Lane might not exist yet or error
+                queue_lengths.append(0.0)
+                waiting_times.append(0.0)
+        
+        # Normalize current phase
+        normalized_phase = self.current_phase / max(len(self.phases) - 1, 1)
         
         # Normalize time since phase change
         normalized_time = min(self.time_since_phase_change / self.max_green, 1.0)
         
         # Combine into state vector
         state = np.array(
-            queue_lengths + waiting_times + [self.current_phase, normalized_time],
+            queue_lengths + waiting_times + [normalized_phase, normalized_time],
             dtype=np.float32
         )
         
@@ -295,32 +357,24 @@ class SumoTrafficEnv(gym.Env):
         
         # Collect from all lanes
         for lane_id in self.lanes:
-            vehicle_ids = self.sumo.lane.getLastStepVehicleIDs(lane_id)
-            all_vehicle_ids.extend(vehicle_ids)
-            
-            for vid in vehicle_ids:
-                waiting_time = self.sumo.vehicle.getWaitingTime(vid)
-                all_waiting_times.append(waiting_time)
-            
-            queue_length = self.sumo.lane.getLastStepHaltingNumber(lane_id)
-            all_queue_lengths.append(queue_length)
+            try:
+                vehicle_ids = self.sumo.lane.getLastStepVehicleIDs(lane_id)
+                all_vehicle_ids.extend(vehicle_ids)
+                
+                for vid in vehicle_ids:
+                    waiting_time = self.sumo.vehicle.getWaitingTime(vid)
+                    all_waiting_times.append(waiting_time)
+                
+                queue_length = self.sumo.lane.getLastStepHaltingNumber(lane_id)
+                all_queue_lengths.append(queue_length)
+            except:
+                pass
         
         return {
             'waiting_times': all_waiting_times if all_waiting_times else [0.0],
             'queue_lengths': all_queue_lengths if all_queue_lengths else [0.0],
             'vehicle_ids': all_vehicle_ids
         }
-    
-    def _set_yellow_phase(self, current_phase: int):
-        """Set yellow phase for transition"""
-        # Get current phase state
-        phase_state = self.phases[current_phase].state
-        
-        # Convert to yellow (replace 'G' with 'y', keep 'r')
-        yellow_state = phase_state.replace('G', 'y').replace('g', 'y')
-        
-        # Set yellow phase
-        self.sumo.trafficlight.setRedYellowGreenState(self.tls_id, yellow_state)
     
     def render(self):
         """Render is handled by SUMO GUI"""
@@ -344,25 +398,6 @@ class SumoTrafficEnv(gym.Env):
         self.close()
 
 
-class MultiIntersectionEnv(SumoTrafficEnv):
-    """
-    Extended environment for multiple intersections.
-    Can be used for centralized or multi-agent control.
-    """
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-        # Override to control all traffic lights
-        self.tls_objects = self.net.getTrafficLights()
-        
-        # Each TLS gets its own action space
-        # For centralized: joint action space
-        # For multi-agent: would need separate policies
-        
-        print(f"Multi-intersection environment with {len(self.tls_ids)} traffic lights")
-
-
 if __name__ == "__main__":
     # Test environment
     from reward import FairnessAwareReward, RewardConfig
@@ -370,9 +405,11 @@ if __name__ == "__main__":
     config = RewardConfig()
     reward_fn = FairnessAwareReward(config)
     
+    network_path = "data/sumo_networks/single_intersection/medium"
+    
     env = SumoTrafficEnv(
-        net_file="data/sumo_networks/single/network.net.xml",
-        route_file="data/sumo_networks/single/routes.rou.xml",
+        net_file=f"{network_path}/network.net.xml",
+        route_file=f"{network_path}/routes.rou.xml",
         reward_fn=reward_fn,
         use_gui=False,
         episode_length=360,  # 6 minutes for testing
@@ -387,7 +424,7 @@ if __name__ == "__main__":
     for i in range(10):
         action = env.action_space.sample()
         state, reward, terminated, truncated, info = env.step(action)
-        print(f"Step {i}: reward={reward:.3f}, vehicles={info['num_vehicles']}")
+        print(f"Step {i}: reward={reward:.3f}, vehicles={info.get('num_vehicles', 0)}")
         
         if terminated:
             break
