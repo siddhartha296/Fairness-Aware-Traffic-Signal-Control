@@ -1,4 +1,8 @@
 fairness-tsc/
+sumo-1.19.0/
+data/
+results/
+routes.rou.xml
 git_pat.txt
 
 # Python

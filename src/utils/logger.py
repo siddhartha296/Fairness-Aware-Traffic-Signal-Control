@@ -5,6 +5,7 @@ src/utils/logger.py
 
 import logging
 import sys
+import numpy as np
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 

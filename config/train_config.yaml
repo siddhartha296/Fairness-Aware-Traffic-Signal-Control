@@ -35,7 +35,7 @@ reward:
     delta: 1.5         # Maximum waiting time weight
     
     # Starvation penalty parameters
-    lambda: 0.1        # Exponential penalty rate
+    lambda_: 0.1        # Exponential penalty rate
     threshold: 120     # Starvation threshold (seconds)
     
     # Normalization

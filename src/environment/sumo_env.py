@@ -76,17 +76,19 @@ class SumoTrafficEnv(gym.Env):
         self.net = sumolib.net.readNet(net_file)
         
         # Get traffic light IDs
-        self.tls_ids = [tls.getID() for tls in self.net.getTrafficLights()]
-        if not self.tls_ids:
+        self.tls_objects = self.net.getTrafficLights()
+        if not self.tls_objects:
             raise ValueError("No traffic lights found in network")
+        self.tls_ids = [tls.getID() for tls in self.tls_objects]
+        self.tls_ids = [tls.getID() for tls in self.tls_objects]
         
         # For simplicity, control first traffic light
         # Can be extended to multi-agent
         self.tls_id = self.tls_ids[0]
         
         # Get phases for this traffic light
-        tls = self.net.getTrafficLight(self.tls_id)
-        self.phases = tls.getPrograms()['0'].getPhases()
+        tls = self.tls_objects[0]
+        self.phases = list(tls.getPrograms().values())[0].getPhases()
         
         # Filter out yellow/red phases (only green phases are actions)
         self.green_phases = [
@@ -352,7 +354,7 @@ class MultiIntersectionEnv(SumoTrafficEnv):
         super().__init__(*args, **kwargs)
         
         # Override to control all traffic lights
-        self.tls_ids = [tls.getID() for tls in self.net.getTrafficLights()]
+        self.tls_objects = self.net.getTrafficLights()
         
         # Each TLS gets its own action space
         # For centralized: joint action space

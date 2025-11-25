@@ -60,7 +60,7 @@ def parse_args():
         '--network',
         type=str,
         default='single_intersection',
-        choices=['single_intersection', 'grid_4x4', 'arterial'],
+        
         help='Traffic network to use'
     )
     

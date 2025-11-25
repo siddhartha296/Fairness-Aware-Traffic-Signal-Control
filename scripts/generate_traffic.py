@@ -24,7 +24,7 @@ SUMO = "sumo"
 def get_sumo_tool(tool_name):
     """Check if SUMO tool is in PATH or SUMO_HOME"""
     if os.getenv("SUMO_HOME"):
-        tool_path = Path(os.getenv("SUMO_HOME")) / "bin" / tool_name
+        tool_path = Path(os.getenv("SUMO_HOME")) / ('tools' if tool_name.endswith('.py') else 'bin') / tool_name
         if tool_path.exists():
             return str(tool_path)
     
@@ -50,9 +50,10 @@ def generate_single_intersection(output_dir: Path):
         "--grid",
         "--grid.number=1",
         "--grid.length=500",
+        "--grid.attach-length=500",
         "-L=4", # Number of lanes
         "--tls.default-type=static",
-        "--tls.layout=opposite",
+        "--tls.layout=opposites",
         "--output-file", str(net_file)
     ]
     
@@ -95,7 +96,6 @@ def generate_traffic(network_file: Path, output_dir: Path, duration: int, demand
         "-o", str(trip_file),
         "-e", str(duration),
         "-p", str(period),
-        "--validate"
     ]
     
     # 2. Generate routes from trips
@@ -105,7 +105,6 @@ def generate_traffic(network_file: Path, output_dir: Path, duration: int, demand
         "-t", str(trip_file),
         "-o", str(route_file),
         "--ignore-errors",
-        "--validate"
     ]
     
     # 3. Create SUMO config file
